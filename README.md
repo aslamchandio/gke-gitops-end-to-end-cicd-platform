@@ -212,16 +212,55 @@ Edit `terraform.tfvars`:
 ```hcl
 # terraform/terraform.tfvars
 
-project_id        = "your-gcp-project-id"
-region            = "us-central1"
-zone              = "us-central1-a"
-cluster_name      = "my-gke-cluster"
-environment       = "prod"
+gcp_project_id = "abcd1234"
 
-# GKE Node Pool Configuration
-node_count        = 3
-machine_type      = "e2-standard-4"
-disk_size_gb      = 100
+gcp_region_1 = "us-central1"
+gcp_region_2 = "me-central1"
+
+
+environment      = "prod"
+business_divsion = "it"
+
+project_services = [
+  "cloudresourcemanager.googleapis.com",
+  "cloudbilling.googleapis.com",
+  "serviceusage.googleapis.com",
+  "compute.googleapis.com",
+  "oslogin.googleapis.com",
+  "container.googleapis.com",
+  "containerregistry.googleapis.com",
+  "iam.googleapis.com",
+  "monitoring.googleapis.com",
+  "networkconnectivity.googleapis.com",
+  "networksecurity.googleapis.com",
+  "networkservices.googleapis.com",
+  "dns.googleapis.com",
+  "certificatemanager.googleapis.com",
+  "sql-component.googleapis.com",
+  "sqladmin.googleapis.com",
+  "servicenetworking.googleapis.com",
+  "iap.googleapis.com",
+  "storage-api.googleapis.com",
+  "secretmanager.googleapis.com"
+]
+
+# VPC Configuration
+subnet_cidrs = ["192.168.16.0/20", "172.30.10.0/24", "172.30.11.0/24", "192.168.1.0/24"]
+
+pod_cidrs = ["10.244.0.0/16", "10.245.0.0/16"]
+
+service_cidr = "10.34.0.0/16"
+
+source_ip_ranges = "39.100.11.78/32"
+
+# GitHub OIDC
+vm_machine_type_map = {
+  "test" = "e2-micro"
+  "dev"  = "e2-small"
+  "prod" = "e2-medium"
+}
+vm_disk_size = 20
+vm_disk_type = "pd-standard"
 
 # GitHub OIDC
 github_org        = "your-github-org"
