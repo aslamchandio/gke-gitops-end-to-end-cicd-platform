@@ -133,8 +133,8 @@ This repository implements a **production-grade, fully automated CI/CD pipeline*
 .
 ├── .github/
 │   └── workflows/
-│       ├── ci-dev.yml            # CI pipeline for dev branch
-│       └── ci-prod.yml           # CI pipeline for main/prod branch
+│       ├── cicd-deploy.yml            # CI pipeline for dev branch
+           
 │
 ├── terraform/
 │   ├── main.tf                   # Root module — GKE, VPC, IAM
@@ -315,6 +315,114 @@ terraform output service_account_email
 
 ---
 
+## 📦 ODIC Authentication Setup using Gcloud
+
+```bash
+# Configure Docker to authenticate with Artifact Registry
+gcloud iam service-accounts create wid-cicd-sa --project dev-project-487558 --display-name "Workload-Identity GKE"
+
+gcloud iam workload-identity-pools create github-actions-cicd-gcp-pool \
+    --project="dev-project-487558" \
+    --location="global" \
+    --display-name="GitHub Action CICD GCP Pool" \
+    --description="An Identity Pool for Github Action For GCP"
+
+
+gcloud iam workload-identity-pools describe github-actions-cicd-gcp-pool \
+    --project="dev-project-487558" \
+    --location="global" \
+    --format="value(name)"
+
+    projects/39297952029/locations/global/workloadIdentityPools/github-actions-cicd-gcp-pool
+
+gcloud beta iam workload-identity-pools providers create-oidc my-github-actions-cicd-gcp-oidc \
+    --project="dev-project-487558" \
+    --location="global" \
+    --workload-identity-pool="github-actions-cicd-gcp-pool" \
+    --display-name="My GitHub Action CICD GCP OIDC" \
+    --attribute-mapping="google.subject=assertion.sub,attribute.actor=assertion.actor,attribute.repository=assertion.repository, attribute.aud=assertion.aud,attribute.repository_owner=assertion.repository_owner" \
+    --attribute-condition="assertion.repository_owner == 'github-acc-name'" \
+    --issuer-uri="https://token.actions.githubusercontent.com"  
+
+   --attribute-mapping="google.subject=assertion.sub,
+                      attribute.actor=assertion.actor,
+                      attribute.aud=assertion.aud,
+                      attribute.repository=assertion.repository,
+                      attribute.repository_owner=assertion.repository_owner"
+
+                      
+  --attribute-condition="assertion.repository_owner == 'github-acc-name'"   
+
+gcloud iam workload-identity-pools providers list --workload-identity-pool="github-actions-cicd-gcp-pool" --location="global" --show-deleted
+gcloud iam workload-identity-pools providers list --workload-identity-pool="github-actions-cicd-gcp-pool" --location="global" 
+
+gcloud iam service-accounts create cicd-oidc-gcp-sa \
+    --project="dev-project-487558" \
+    --description="Service Account For OIDC Github Actions for GCP" \
+    --display-name="SA for OIDC GitHub Actions"
+
+gcloud projects get-iam-policy dev-project-487558   \
+--flatten="bindings[].members" \
+--format='table(bindings.role)' \
+--filter="bindings.members:cicd-oidc-gcp-sa@dev-project-487558.iam.gserviceaccount.com"
+
+
+gcloud projects add-iam-policy-binding dev-project-487558 \
+  --member="serviceAccount:cicd-oidc-gcp-sa@dev-project-487558.iam.gserviceaccount.com" \
+   --role="roles/owner" \
+  --condition None
+
+
+gcloud projects add-iam-policy-binding dev-project-487558 \
+  --member="serviceAccount:cicd-oidc-gcp-sa@dev-project-487558.iam.gserviceaccount.com" \
+  --role="roles/resourcemanager.projectIamAdmin" \
+  --condition None
+
+
+gcloud projects add-iam-policy-binding dev-project-487558 \
+  --member="serviceAccount:cicd-oidc-gcp-sa@dev-project-487558.iam.gserviceaccount.com" \
+  --role="roles/iam.roleAdmin" \
+  --condition None
+
+gcloud projects add-iam-policy-binding dev-project-487558 \
+  --member="serviceAccount:cicd-oidc-gcp-sa@dev-project-487558.iam.gserviceaccount.com" \
+  --role="roles/iam.serviceAccountAdmin" \
+  --condition None
+
+gcloud projects add-iam-policy-binding dev-project-487558 \
+  --member="serviceAccount:cicd-oidc-gcp-sa@dev-project-487558.iam.gserviceaccount.com" \
+  --role="roles/iam.serviceAccountTokenCreator" \
+  --condition None
+
+gcloud projects add-iam-policy-binding dev-project-487558 \
+  --member="serviceAccount:cicd-oidc-gcp-sa@dev-project-487558.iam.gserviceaccount.com" \
+  --role="roles/iam.serviceAccountUser" \
+  --condition None
+
+
+export PROJECT_ID="dev-project-487558"
+export REPO="aslamchandio/gcp-oidc-gitops-code-repo"
+export WORKLOAD_IDENTITY_POOL_ID="projects/39297952029/locations/global/workloadIdentityPools/github-actions-cicd-gcp-pool"
+
+gcloud iam service-accounts add-iam-policy-binding "cicd-oidc-gcp-sa@${PROJECT_ID}.iam.gserviceaccount.com" \
+  --member="principalSet://iam.googleapis.com/${WORKLOAD_IDENTITY_POOL_ID}/attribute.repository/${REPO}" \
+  --project="${PROJECT_ID}" \
+  --role="roles/iam.workloadIdentityUser" 
+
+
+gcloud iam workload-identity-pools providers describe my-github-actions-cicd-gcp-oidc \
+  --project="${PROJECT_ID}" \
+  --location="global" \
+  --workload-identity-pool="github-actions-cicd-gcp-pool" \
+  --format="value(name)"
+
+WORKLOAD_IDENTITY_PROVIDER   projects/39297952029/locations/global/workloadIdentityPools/github-actions-cicd-gcp-pool/providers/my-github-actions-cicd-gcp-oidc
+
+SERVICE_ACCOUNT   cicd-oidc-gcp-sa@dev-project-487558.iam.gserviceaccount.com
+```
+
+---
+
 ## 📦 Artifact Registry Configuration
 
 ```bash
@@ -348,11 +456,20 @@ kubectl create namespace argocd
 helm repo add argo https://argoproj.github.io/argo-helm
 helm repo update
 
-helm install argocd argo/argo-cd \
-  --namespace argocd \
-  --set configs.params.server.insecure=false \
-  --set server.ingress.enabled=true \
-  -f argocd/values.yaml
+
+helm install argocd argo/argo-cd --namespace argocd
+
+helm install argocd argo/argo-cd --version 9.4.10 --namespace argocd #Install by version
+
+```
+
+```bash
+
+helm ls -n argocd
+
+kubectl get all -n argocd
+kubectl get pods -n argocd
+kubectl get service -n  argocd
 ```
 
 ### Apply ArgoCD Application Manifests
@@ -362,58 +479,64 @@ helm install argocd argo/argo-cd \
 kubectl apply -f argocd/project.yaml
 
 # Register dev and prod applications
-kubectl apply -f argocd/application-dev.yaml
-kubectl apply -f argocd/application-prod.yaml
+kubectl apply -f argocd/applications/kustomize-application-dev.yaml
+kubectl apply -f argocd/applications/kustomize-application-prod.yaml
 ```
 
-### `argocd/application-dev.yaml`
+### `argocd/applications/kustomize-application-dev.yaml` 
 
 ```yaml
 apiVersion: argoproj.io/v1alpha1
 kind: Application
 metadata:
-  name: my-app-dev
+  name: grade-submission-dev
   namespace: argocd
 spec:
-  project: my-project
+  project: default
+
   source:
-    repoURL: https://github.com/your-org/your-repo
-    targetRevision: dev
-    path: k8s/overlays/dev
+    repoURL: https://github.com/aslamchandio/gcp-oidc-gitops-app-repo.git
+    targetRevision: HEAD
+    path: kustomize/overlays/dev
+
   destination:
     server: https://kubernetes.default.svc
-    namespace: dev
+    namespace: dev-ns
+
   syncPolicy:
     automated:
       prune: true
       selfHeal: true
     syncOptions:
-      - CreateNamespace=true
+    - CreateNamespace=true
 ```
 
-### `argocd/application-prod.yaml`
+### ``argocd/applications/kustomize-application-prod.yaml``
 
 ```yaml
 apiVersion: argoproj.io/v1alpha1
 kind: Application
 metadata:
-  name: my-app-prod
+  name: grade-submission-prod
   namespace: argocd
 spec:
-  project: my-project
+  project: default
+
   source:
-    repoURL: https://github.com/your-org/your-repo
-    targetRevision: main
-    path: k8s/overlays/prod
+    repoURL: https://github.com/aslamchandio/gcp-oidc-gitops-app-repo.git
+    targetRevision: HEAD
+    path: kustomize/overlays/prod
+
   destination:
     server: https://kubernetes.default.svc
-    namespace: prod
+    namespace: argocd-prod
+
   syncPolicy:
     automated:
       prune: true
-      selfHeal: false        # Manual approval for prod syncs
+      selfHeal: true
     syncOptions:
-      - CreateNamespace=true
+    - CreateNamespace=true
 ```
 
 ### Access the ArgoCD UI
@@ -427,6 +550,12 @@ kubectl -n argocd get secret argocd-initial-admin-secret \
 kubectl port-forward svc/argocd-server -n argocd 8080:443
 
 # Open https://localhost:8080
+
+# Patch with loadbalancer 
+kubectl patch svc argocd-server -n argocd -p '{"spec": {"type": "LoadBalancer"}}'
+
+# Open https://192.168.111.225
+# Open https://argocd.techscloud.online
 ```
 
 ---
@@ -442,15 +571,10 @@ apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
 
 resources:
-  - deployment.yaml
-  - service.yaml
-  - hpa.yaml
-  - ingress.yaml
-
-images:
-  - name: my-app
-    newName: us-central1-docker.pkg.dev/my-project/my-app-registry/backend
-    newTag: latest   # Replaced by CI pipeline with git SHA
+- myapp1-deployment.yaml
+- myapp1-clusterip-service.yaml
+- myapp1-gateway.yaml
+- myapp1-http-route.yaml
 ```
 
 ### Dev Overlay (`k8s/overlays/dev/kustomization.yaml`)
@@ -459,20 +583,18 @@ images:
 apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
 
-namespace: dev
-
 resources:
-  - ../../base
-
-namePrefix: dev-
+- ../../base
 
 patches:
-  - path: replica-patch.yaml
-  - path: resource-limits.yaml
-
-images:
-  - name: my-app
-    newTag: "latest"   # Updated by CI
+- path: replicas.yaml
+  target:
+    kind: Deployment
+    name: myapp1-deployment
+- path: limits.yaml
+  target:
+    kind: Deployment
+    name: myapp1-deployment
 ```
 
 **`k8s/overlays/dev/replica-patch.yaml`:**
@@ -480,9 +602,34 @@ images:
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: my-app
+  name: myapp1-deployment
+  namespace: dev-ns
+  labels:
+    app: myapp1-pod
 spec:
-  replicas: 1
+  replicas: 3
+```
+**`k8s/overlays/dev/limits-patch.yaml`:**
+```yaml
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: myapp1-deployment
+  namespace: dev-ns
+  labels:
+    app: myapp1-pod
+spec:
+  template:
+    spec:
+      containers:
+      - name: myapp1-container
+        resources:
+          requests:
+            memory: "40Mi"
+            cpu: "40m"
+          limits:
+            memory: "50Mi"
+            cpu: "50m"
 ```
 
 ### Prod Overlay (`k8s/overlays/prod/kustomization.yaml`)
@@ -491,16 +638,18 @@ spec:
 apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
 
-namespace: prod
-
 resources:
-  - ../../base
-
-namePrefix: prod-
+- ../../base
 
 patches:
-  - path: replica-patch.yaml
-  - path: resource-limits.yaml
+- path: replicas.yaml
+  target:
+    kind: Deployment
+    name: myapp1-deployment
+- path: limits.yaml
+  target:
+    kind: Deployment
+    name: myapp1-deployment
 ```
 
 **`k8s/overlays/prod/replica-patch.yaml`:**
@@ -508,148 +657,122 @@ patches:
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: my-app
+  name: myapp1-deployment
+  namespace: argocd-prod
+  labels:
+    app: myapp1-pod
 spec:
-  replicas: 3
+  replicas: 5
+```
+**`k8s/overlays/dev/limits-patch.yaml`:**
+```yaml
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: myapp1-deployment
+  namespace: dev-ns
+  labels:
+    app: myapp1-pod
+spec:
+  template:
+    spec:
+      containers:
+      - name: myapp1-container
+        resources:
+          requests:
+            memory: "40Mi"
+            cpu: "40m"
+          limits:
+            memory: "50Mi"
+            cpu: "50m"
 ```
 
 ---
 
 ## ⚙️ GitHub Actions Workflows
 
-### Dev Workflow (`.github/workflows/ci-dev.yml`)
+### Dev Workflow (`.github/workflows/cicd-deploy.yaml`)
 
 ```yaml
-name: CI — Dev
-
+name: cicd-gcp-gitops
 on:
   push:
-    branches: [dev]
-
-permissions:
-  contents: write
-  id-token: write    # Required for OIDC
+    branches: [ "main" ]
 
 env:
-  PROJECT_ID: ${{ secrets.GCP_PROJECT_ID }}
-  REGION: us-central1
-  REGISTRY: us-central1-docker.pkg.dev
-  REPOSITORY: my-app-registry
-  IMAGE: backend
-  OVERLAY: dev
+  GCP_REPOSITORY_NAME: my-artifact-gitops-repo # <-- UPDATE: Your ECR Repository Name
+  CONFIG_REPO: https://github.com/aslamchandio/gcp-oidc-gitops-app-repo.git # <-- UPDATE: Argo Manifest Repository URL
+  CONFIG_REPO_PATH: kustomize/base/myapp1-deployment.yaml # <-- Path to the manifest file in argo-repo
+  CONFIG_REPO_BRANCH: main # <-- Branch in argo-repo to commit to  
+  IMAGE_NAME: myapp
+  REGION_NAME: us-west1
 
-jobs:
-  build-and-deploy:
+jobs:   
+  build-and-push:
     runs-on: ubuntu-latest
+    # These permissions are needed to interact with GitHub's OIDC Token endpoint. New
+    permissions:
+      id-token: write
+      contents: read  
 
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
+      - name: "Checkout"
+        uses: 'actions/checkout@v4'
 
-      - name: Authenticate to Google Cloud (OIDC)
+      - name: Configure GCP credentials
+        id: auth
         uses: google-github-actions/auth@v2
         with:
-          workload_identity_provider: ${{ secrets.WIF_PROVIDER }}
-          service_account: ${{ secrets.WIF_SERVICE_ACCOUNT }}
+          # Value from command: gcloud iam workload-identity-pools providers describe github-actions --workload-identity-pool="github-actions-pool" --location="global"
+          workload_identity_provider: '${{ secrets.WORKLOAD_IDENTITY_PROVIDER }}'
+          create_credentials_file: true
+          service_account: '${{ secrets.SERVICE_ACCOUNT }}'    
+          token_format: "access_token"
+          access_token_lifetime: "120s"
 
-      - name: Set up Cloud SDK
+      
+                # Install gcloud SDK (Required!)
+      - name: Setup Cloud SDK
         uses: google-github-actions/setup-gcloud@v2
 
-      - name: Configure Docker
-        run: gcloud auth configure-docker ${{ env.REGION }}-docker.pkg.dev --quiet
-
-      - name: Build Docker Image
+      # Configure Docker auth
+      - name: Configure Docker Auth
         run: |
-          docker build \
-            -t ${{ env.REGISTRY }}/${{ env.PROJECT_ID }}/${{ env.REPOSITORY }}/${{ env.IMAGE }}:${{ github.sha }} \
-            -t ${{ env.REGISTRY }}/${{ env.PROJECT_ID }}/${{ env.REPOSITORY }}/${{ env.IMAGE }}:latest \
-            .
+          gcloud auth configure-docker ${{ env.REGION_NAME }}-docker.pkg.dev --quiet
 
-      - name: Push Docker Image
+      
+      # Generate short commit SHA
+      - name: Extract short SHA
+        id: vars
+        run: echo "IMAGE_TAG=$(git rev-parse --short=7 HEAD)" >> $GITHUB_OUTPUT
+
+      # Build & Push image
+      - name: Build and Push Container Image
         run: |
-          docker push ${{ env.REGISTRY }}/${{ env.PROJECT_ID }}/${{ env.REPOSITORY }}/${{ env.IMAGE }}:${{ github.sha }}
-          docker push ${{ env.REGISTRY }}/${{ env.PROJECT_ID }}/${{ env.REPOSITORY }}/${{ env.IMAGE }}:latest
+          IMAGE=${{ env.REGION_NAME }}-docker.pkg.dev/${{ secrets.PROJECT_ID }}/${{ env.GCP_REPOSITORY_NAME }}/${{ env.IMAGE_NAME }}:${{ steps.vars.outputs.IMAGE_TAG }}  
 
-      - name: Update Kustomize Image Tag
+          docker build -t $IMAGE .
+          docker push $IMAGE
+
+      # Update GitOps repo manifest 
+      - name: Update Kubernetes Manifest with new Tag
         run: |
-          cd k8s/overlays/${{ env.OVERLAY }}
-          kustomize edit set image my-app=${{ env.REGISTRY }}/${{ env.PROJECT_ID }}/${{ env.REPOSITORY }}/${{ env.IMAGE }}:${{ github.sha }}
+          # Install yq for YAML manipulation
+          sudo snap install yq
+        
+         
+          git config --global user.email "github-actions[bot]@users.noreply.github.com"
+          git config --global user.name "GitHub Actions CI"
 
-      - name: Commit and Push Manifest Update
-        run: |
-          git config user.name "github-actions[bot]"
-          git config user.email "github-actions[bot]@users.noreply.github.com"
-          git add k8s/overlays/${{ env.OVERLAY }}/kustomization.yaml
-          git commit -m "chore(dev): update image tag to ${{ github.sha }}"
-          git push
-```
+          git clone https://x-access-token:${{ secrets.GITOPS_PAT }}@github.com/aslamchandio/gcp-oidc-gitops-app-repo.git config_repo
+          cd config_repo
 
-### Prod Workflow (`.github/workflows/ci-prod.yml`)
 
-```yaml
-name: CI — Prod
+          yq e '(.spec.template.spec.containers[0].image) = "${{ env.REGION_NAME }}-docker.pkg.dev/${{ secrets.PROJECT_ID }}/${{ env.GCP_REPOSITORY_NAME }}/${{ env.IMAGE_NAME }}:${{ steps.vars.outputs.IMAGE_TAG }}"' -i ${{ env.CONFIG_REPO_PATH }}
 
-on:
-  push:
-    branches: [main]
-
-permissions:
-  contents: write
-  id-token: write
-
-env:
-  PROJECT_ID: ${{ secrets.GCP_PROJECT_ID }}
-  REGION: us-central1
-  REGISTRY: us-central1-docker.pkg.dev
-  REPOSITORY: my-app-registry
-  IMAGE: backend
-  OVERLAY: prod
-
-jobs:
-  build-and-deploy:
-    runs-on: ubuntu-latest
-    environment: production     # Requires manual approval in GitHub
-
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      - name: Authenticate to Google Cloud (OIDC)
-        uses: google-github-actions/auth@v2
-        with:
-          workload_identity_provider: ${{ secrets.WIF_PROVIDER }}
-          service_account: ${{ secrets.WIF_SERVICE_ACCOUNT }}
-
-      - name: Set up Cloud SDK
-        uses: google-github-actions/setup-gcloud@v2
-
-      - name: Configure Docker
-        run: gcloud auth configure-docker ${{ env.REGION }}-docker.pkg.dev --quiet
-
-      - name: Build Docker Image
-        run: |
-          docker build \
-            -t ${{ env.REGISTRY }}/${{ env.PROJECT_ID }}/${{ env.REPOSITORY }}/${{ env.IMAGE }}:${{ github.sha }} \
-            -t ${{ env.REGISTRY }}/${{ env.PROJECT_ID }}/${{ env.REPOSITORY }}/${{ env.IMAGE }}:stable \
-            .
-
-      - name: Push Docker Image
-        run: |
-          docker push ${{ env.REGISTRY }}/${{ env.PROJECT_ID }}/${{ env.REPOSITORY }}/${{ env.IMAGE }}:${{ github.sha }}
-          docker push ${{ env.REGISTRY }}/${{ env.PROJECT_ID }}/${{ env.REPOSITORY }}/${{ env.IMAGE }}:stable
-
-      - name: Update Kustomize Image Tag
-        run: |
-          cd k8s/overlays/${{ env.OVERLAY }}
-          kustomize edit set image my-app=${{ env.REGISTRY }}/${{ env.PROJECT_ID }}/${{ env.REPOSITORY }}/${{ env.IMAGE }}:${{ github.sha }}
-
-      - name: Commit and Push Manifest Update
-        run: |
-          git config user.name "github-actions[bot]"
-          git config user.email "github-actions[bot]@users.noreply.github.com"
-          git add k8s/overlays/${{ env.OVERLAY }}/kustomization.yaml
-          git commit -m "chore(prod): update image tag to ${{ github.sha }}"
-          git push
+          git add .
+          git commit -m "CI: Update image tag to ${{ steps.vars.outputs.IMAGE_TAG }}"
+          git push origin ${{ env.CONFIG_REPO_BRANCH }}
 ```
 
 ---
@@ -740,16 +863,20 @@ argocd app history my-app-prod
 
 ```bash
 # Dev namespace
-kubectl get all -n dev
+kubectl get all -n dev-ns
+kubectl get gateway -n dev-ns
+kubectl get httproute -n dev-ns
 
 # Prod namespace
-kubectl get all -n prod
+kubectl get all -n prod-ns
+kubectl get gateway -n prod-ns
+kubectl get httproute -n prod-ns
 
 # View rollout status
-kubectl rollout status deployment/prod-my-app -n prod
+kubectl rollout status deployment/prod-my-app -n prod-ns
 
 # View logs
-kubectl logs -f -l app=my-app -n prod
+kubectl logs -f -l app=my-app -n prod-ns
 ```
 
 ### Recommended Add-ons
