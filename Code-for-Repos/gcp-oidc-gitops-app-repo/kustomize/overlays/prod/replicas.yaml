@@ -1,0 +1,9 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: myapp1-deployment
+  namespace: argocd-prod
+  labels:
+    app: myapp1-pod
+spec:
+  replicas: 5

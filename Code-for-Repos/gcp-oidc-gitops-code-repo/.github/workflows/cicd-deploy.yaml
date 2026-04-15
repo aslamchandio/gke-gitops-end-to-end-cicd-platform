@@ -1,0 +1,79 @@
+name: cicd-gcp-gitops
+on:
+  push:
+    branches: [ "main" ]
+
+env:
+  GCP_REPOSITORY_NAME: my-artifact-gitops-repo # <-- UPDATE: Your ECR Repository Name
+  CONFIG_REPO: https://github.com/aslamchandio/gcp-oidc-gitops-app-repo.git # <-- UPDATE: Argo Manifest Repository URL
+  CONFIG_REPO_PATH: kustomize/base/myapp1-deployment.yaml # <-- Path to the manifest file in argo-repo
+  CONFIG_REPO_BRANCH: main # <-- Branch in argo-repo to commit to  
+  IMAGE_NAME: myapp
+  REGION_NAME: us-west1
+
+jobs:   
+  build-and-push:
+    runs-on: ubuntu-latest
+    # These permissions are needed to interact with GitHub's OIDC Token endpoint. New
+    permissions:
+      id-token: write
+      contents: read  
+
+    steps:
+      - name: "Checkout"
+        uses: 'actions/checkout@v4'
+
+      - name: Configure GCP credentials
+        id: auth
+        uses: google-github-actions/auth@v2
+        with:
+          # Value from command: gcloud iam workload-identity-pools providers describe github-actions --workload-identity-pool="github-actions-pool" --location="global"
+          workload_identity_provider: '${{ secrets.WORKLOAD_IDENTITY_PROVIDER }}'
+          create_credentials_file: true
+          service_account: '${{ secrets.SERVICE_ACCOUNT }}'    
+          token_format: "access_token"
+          access_token_lifetime: "120s"
+
+      
+                # Install gcloud SDK (Required!)
+      - name: Setup Cloud SDK
+        uses: google-github-actions/setup-gcloud@v2
+
+      # Configure Docker auth
+      - name: Configure Docker Auth
+        run: |
+          gcloud auth configure-docker ${{ env.REGION_NAME }}-docker.pkg.dev --quiet
+
+      
+      # Generate short commit SHA
+      - name: Extract short SHA
+        id: vars
+        run: echo "IMAGE_TAG=$(git rev-parse --short=7 HEAD)" >> $GITHUB_OUTPUT
+
+      # Build & Push image
+      - name: Build and Push Container Image
+        run: |
+          IMAGE=${{ env.REGION_NAME }}-docker.pkg.dev/${{ secrets.PROJECT_ID }}/${{ env.GCP_REPOSITORY_NAME }}/${{ env.IMAGE_NAME }}:${{ steps.vars.outputs.IMAGE_TAG }}  
+
+          docker build -t $IMAGE .
+          docker push $IMAGE
+
+      # Update GitOps repo manifest 
+      - name: Update Kubernetes Manifest with new Tag
+        run: |
+          # Install yq for YAML manipulation
+          sudo snap install yq
+        
+         
+          git config --global user.email "github-actions[bot]@users.noreply.github.com"
+          git config --global user.name "GitHub Actions CI"
+
+          git clone https://x-access-token:${{ secrets.GITOPS_PAT }}@github.com/aslamchandio/gcp-oidc-gitops-app-repo.git config_repo
+          cd config_repo
+
+
+          yq e '(.spec.template.spec.containers[0].image) = "${{ env.REGION_NAME }}-docker.pkg.dev/${{ secrets.PROJECT_ID }}/${{ env.GCP_REPOSITORY_NAME }}/${{ env.IMAGE_NAME }}:${{ steps.vars.outputs.IMAGE_TAG }}"' -i ${{ env.CONFIG_REPO_PATH }}
+
+          git add .
+          git commit -m "CI: Update image tag to ${{ steps.vars.outputs.IMAGE_TAG }}"
+          git push origin ${{ env.CONFIG_REPO_BRANCH }}

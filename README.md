@@ -264,7 +264,7 @@ gcloud container clusters get-credentials $(terraform output -raw cluster_name) 
 
 ---
 
-## 🔐 OIDC Authentication Setup
+## 🔐 OIDC Authentication Setup using Terraform
 
 This pipeline uses **Workload Identity Federation** — a keyless, more secure alternative to long-lived service account JSON keys. GitHub Actions exchanges a short-lived OIDC token for temporary GCP credentials.
 
@@ -315,28 +315,28 @@ terraform output service_account_email
 
 ---
 
-## 📦 ODIC Authentication Setup using Gcloud
+## 📦 OIDC Authentication Setup using Gcloud
 
 ```bash
 # Configure Docker to authenticate with Artifact Registry
 gcloud iam service-accounts create wid-cicd-sa --project dev-project-487558 --display-name "Workload-Identity GKE"
 
 gcloud iam workload-identity-pools create github-actions-cicd-gcp-pool \
-    --project="dev-project-487558" \
+    --project="dev-project-123456" \
     --location="global" \
     --display-name="GitHub Action CICD GCP Pool" \
     --description="An Identity Pool for Github Action For GCP"
 
 
 gcloud iam workload-identity-pools describe github-actions-cicd-gcp-pool \
-    --project="dev-project-487558" \
+    --project="dev-project-123456" \
     --location="global" \
     --format="value(name)"
 
-    projects/39297952029/locations/global/workloadIdentityPools/github-actions-cicd-gcp-pool
+    projects/123456789/locations/global/workloadIdentityPools/github-actions-cicd-gcp-pool
 
 gcloud beta iam workload-identity-pools providers create-oidc my-github-actions-cicd-gcp-oidc \
-    --project="dev-project-487558" \
+    --project="dev-project-123456" \
     --location="global" \
     --workload-identity-pool="github-actions-cicd-gcp-pool" \
     --display-name="My GitHub Action CICD GCP OIDC" \
@@ -357,52 +357,52 @@ gcloud iam workload-identity-pools providers list --workload-identity-pool="gith
 gcloud iam workload-identity-pools providers list --workload-identity-pool="github-actions-cicd-gcp-pool" --location="global" 
 
 gcloud iam service-accounts create cicd-oidc-gcp-sa \
-    --project="dev-project-487558" \
+    --project="dev-project-123456" \
     --description="Service Account For OIDC Github Actions for GCP" \
     --display-name="SA for OIDC GitHub Actions"
 
 gcloud projects get-iam-policy dev-project-487558   \
 --flatten="bindings[].members" \
 --format='table(bindings.role)' \
---filter="bindings.members:cicd-oidc-gcp-sa@dev-project-487558.iam.gserviceaccount.com"
+--filter="bindings.members:cicd-oidc-gcp-sa@dev-project-123456.iam.gserviceaccount.com"
 
 
 gcloud projects add-iam-policy-binding dev-project-487558 \
-  --member="serviceAccount:cicd-oidc-gcp-sa@dev-project-487558.iam.gserviceaccount.com" \
+  --member="serviceAccount:cicd-oidc-gcp-sa@dev-project-123456.iam.gserviceaccount.com" \
    --role="roles/owner" \
   --condition None
 
 
 gcloud projects add-iam-policy-binding dev-project-487558 \
-  --member="serviceAccount:cicd-oidc-gcp-sa@dev-project-487558.iam.gserviceaccount.com" \
+  --member="serviceAccount:cicd-oidc-gcp-sa@dev-project-123456.iam.gserviceaccount.com" \
   --role="roles/resourcemanager.projectIamAdmin" \
   --condition None
 
 
 gcloud projects add-iam-policy-binding dev-project-487558 \
-  --member="serviceAccount:cicd-oidc-gcp-sa@dev-project-487558.iam.gserviceaccount.com" \
+  --member="serviceAccount:cicd-oidc-gcp-sa@dev-project-123456.iam.gserviceaccount.com" \
   --role="roles/iam.roleAdmin" \
   --condition None
 
 gcloud projects add-iam-policy-binding dev-project-487558 \
-  --member="serviceAccount:cicd-oidc-gcp-sa@dev-project-487558.iam.gserviceaccount.com" \
+  --member="serviceAccount:cicd-oidc-gcp-sa@dev-project-123456.iam.gserviceaccount.com" \
   --role="roles/iam.serviceAccountAdmin" \
   --condition None
 
 gcloud projects add-iam-policy-binding dev-project-487558 \
-  --member="serviceAccount:cicd-oidc-gcp-sa@dev-project-487558.iam.gserviceaccount.com" \
+  --member="serviceAccount:cicd-oidc-gcp-sa@dev-project-123456.iam.gserviceaccount.com" \
   --role="roles/iam.serviceAccountTokenCreator" \
   --condition None
 
 gcloud projects add-iam-policy-binding dev-project-487558 \
-  --member="serviceAccount:cicd-oidc-gcp-sa@dev-project-487558.iam.gserviceaccount.com" \
+  --member="serviceAccount:cicd-oidc-gcp-sa@dev-project-123456.iam.gserviceaccount.com" \
   --role="roles/iam.serviceAccountUser" \
   --condition None
 
 
-export PROJECT_ID="dev-project-487558"
+export PROJECT_ID="dev-project-123456"
 export REPO="aslamchandio/gcp-oidc-gitops-code-repo"
-export WORKLOAD_IDENTITY_POOL_ID="projects/39297952029/locations/global/workloadIdentityPools/github-actions-cicd-gcp-pool"
+export WORKLOAD_IDENTITY_POOL_ID="projects/123456789/locations/global/workloadIdentityPools/github-actions-cicd-gcp-pool"
 
 gcloud iam service-accounts add-iam-policy-binding "cicd-oidc-gcp-sa@${PROJECT_ID}.iam.gserviceaccount.com" \
   --member="principalSet://iam.googleapis.com/${WORKLOAD_IDENTITY_POOL_ID}/attribute.repository/${REPO}" \
@@ -416,9 +416,9 @@ gcloud iam workload-identity-pools providers describe my-github-actions-cicd-gcp
   --workload-identity-pool="github-actions-cicd-gcp-pool" \
   --format="value(name)"
 
-WORKLOAD_IDENTITY_PROVIDER   projects/39297952029/locations/global/workloadIdentityPools/github-actions-cicd-gcp-pool/providers/my-github-actions-cicd-gcp-oidc
+WORKLOAD_IDENTITY_PROVIDER   projects/123456789/locations/global/workloadIdentityPools/github-actions-cicd-gcp-pool/providers/my-github-actions-cicd-gcp-oidc
 
-SERVICE_ACCOUNT   cicd-oidc-gcp-sa@dev-project-487558.iam.gserviceaccount.com
+SERVICE_ACCOUNT   cicd-oidc-gcp-sa@dev-project-123456.iam.gserviceaccount.com
 ```
 
 ---

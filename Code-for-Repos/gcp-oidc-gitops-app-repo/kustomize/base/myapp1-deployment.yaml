@@ -1,0 +1,29 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: myapp1-deployment
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: myapp1-pod
+  template:
+    metadata:
+      name: myapp1-pod
+      labels:
+        app: myapp1-pod
+    spec:
+      imagePullSecrets:
+      - name: artifact-secret
+      containers:
+      - name: myapp1-container
+        image: 'us-west1-docker.pkg.dev/dev-project-123456/my-artifact-gitops-repo/myapp'
+        ports:
+        - containerPort: 80
+        resources:
+          requests:
+            memory: "20Mi"
+            cpu: "20m"
+          limits:
+            memory: "30Mi"
+            cpu: "30m"
