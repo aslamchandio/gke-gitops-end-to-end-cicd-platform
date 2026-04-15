@@ -255,7 +255,9 @@ gcloud container clusters get-credentials $(terraform output -raw cluster_name) 
 
 ---
 
-## 🔐 OIDC Authentication Setup using Terraform
+## 🔐 OIDC Authentication Setup
+
+###   OIDC Authentication Setup using Terraform
 
 This pipeline uses **Workload Identity Federation** — a keyless, more secure alternative to long-lived service account JSON keys. GitHub Actions exchanges a short-lived OIDC token for temporary GCP credentials.
 
@@ -306,7 +308,7 @@ terraform output service_account_email
 
 ---
 
-## 📦 OIDC Authentication Setup using Gcloud
+### OIDC Authentication Setup using Gcloud
 
 ```bash
 # Configure Docker to authenticate with Artifact Registry
@@ -564,7 +566,7 @@ kubectl patch svc argocd-server -n argocd -p '{"spec": {"type": "LoadBalancer"}}
 
 ---
 
-## 🎛️ Kustomize Environments (dev/prod)
+## 🎛️ Kustomize Environments
 
 Kustomize uses a **base + overlay** pattern. The base holds all shared manifests; overlays layer environment-specific differences on top.
 
@@ -692,7 +694,6 @@ spec:
 ```
 
 ---
-
 ## ⚙️ GitHub Actions Workflows
 
 ### Workflow (`.github/workflows/cicd-deploy.yaml`)
@@ -779,19 +780,6 @@ jobs:
           git push origin ${{ env.CONFIG_REPO_BRANCH }}
 ```
 
-Github secrets for cicd pipeline:
-
-```bash
-
-WORKLOAD_IDENTITY_PROVIDER   projects/123456789/locations/global/workloadIdentityPools/github-actions-cicd-gcp-pool/providers/my-github-actions-cicd-gcp-oidc
-
-SERVICE_ACCOUNT   cicd-oidc-gcp-sa@dev-project-123456.iam.gserviceaccount.com
-
-GITOPS_PAT Personal access tokens (which have repo full control)
-
-Note: Above secrets apply on gcp-oidc-gitops-code-repo repo
-```
-
 ---
 
 ## 🔁 Deployment Flow
@@ -836,15 +824,22 @@ For **prod**, the same flow applies — but the `production` GitHub environment 
 
 | Secret | Description |
 |--------|-------------|
-| `GCP_PROJECT_ID` | Your Google Cloud Project ID |
-| `WIF_PROVIDER` | Workload Identity Provider resource name |
-| `WIF_SERVICE_ACCOUNT` | Service account email for GitHub Actions |
+| `PROJECT_ID` | Your Google Cloud Project ID |
+| `WORKLOAD_IDENTITY_PROVIDER` | Workload Identity Provider resource name |
+| `SERVICE_ACCOUNT` | Service account email for GitHub Actions |
+` 'GITOPS_PAT` | Personal access tokens (which have repo full control) |
 
-Retrieve WIF values after Terraform apply:
+Github secrets for cicd pipeline:
 
 ```bash
-echo "WIF_PROVIDER: $(terraform output -raw workload_identity_provider)"
-echo "WIF_SERVICE_ACCOUNT: $(terraform output -raw github_actions_sa_email)"
+
+PROJECT_ID  dev-project-123456
+WORKLOAD_IDENTITY_PROVIDER   projects/123456789/locations/global/workloadIdentityPools/github-actions-cicd-gcp-pool/providers/my-github-actions-cicd-gcp-oidc
+
+SERVICE_ACCOUNT   cicd-oidc-gcp-sa@dev-project-123456.iam.gserviceaccount.com
+GITOPS_PAT Personal access tokens (which have repo full control)
+
+Note: Above secrets apply on gcp-oidc-gitops-code-repo repo
 ```
 
 ### GitHub Environments
