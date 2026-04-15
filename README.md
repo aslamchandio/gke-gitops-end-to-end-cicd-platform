@@ -130,39 +130,33 @@ This repository implements a **production-grade, fully automated CI/CD pipeline*
 ## 📁 Project Structure
 
 ```
+├── modules/
+│   ├── vpc/
+│   ├── gke-private-cluster/
+│   └── cloudsql-private-instance/
+│
+├── environments/
+│   ├── dev/
+│   │   ├── main.tf
+│   │   ├── variables.tf
+│   │   └── terraform.tfvars
+│   │
+│   └── prod/
+│       ├── main.tf
+│       ├── variables.tf
+│       └── terraform.tfvars
+│
+├── scripts/
+│   ├── deploy-dev.sh
+│   └── deploy-prod.sh
+│
+└── README.md
+
 .
 ├── .github/
 │   └── workflows/
 │       ├── cicd-deploy.yml            # CI pipeline for dev branch
-           
-│
-├── terraform/
-│   ├── main.tf                   # Root module — GKE, VPC, IAM
-│   ├── variables.tf
-│   ├── outputs.tf
-│   ├── providers.tf
-│   └── modules/
-│       ├── gke/                  # GKE cluster module
-│       ├── artifact-registry/    # Artifact Registry module
-│       ├── iam/                  # IAM & Workload Identity module
-│       └── networking/           # VPC, subnets, NAT
-│
-├── k8s/
-│   ├── base/                     # Kustomize base manifests
-│   │   ├── kustomization.yaml
-│   │   ├── deployment.yaml
-│   │   ├── service.yaml
-│   │   ├── hpa.yaml
-│   │   └── ingress.yaml
-│   └── overlays/
-│       ├── dev/                  # Dev environment overrides
-│       │   ├── kustomization.yaml
-│       │   ├── replica-patch.yaml
-│       │   └── resource-limits.yaml
-│       └── prod/                 # Prod environment overrides
-│           ├── kustomization.yaml
-│           ├── replica-patch.yaml
-│           └── resource-limits.yaml
+
 │
 ├── argocd/
 │   ├── application-dev.yaml      # ArgoCD Application for dev
@@ -244,14 +238,11 @@ registry_id       = "my-app-registry"
 # Authenticate with GCP
 gcloud auth application-default login
 
-# Initialize Terraform
-terraform init
+# Deploy DEV environment:
+./scripts/deploy-dev.sh
 
-# Preview changes
-terraform plan -out=tfplan
-
-# Apply infrastructure
-terraform apply tfplan
+# Deploy Prod environment:
+./scripts/deploy-prod.sh
 ```
 
 ### 3. Configure kubectl
@@ -442,6 +433,19 @@ Image naming convention used in this pipeline:
 Example:
 ```
 us-central1-docker.pkg.dev/my-project/my-app-registry/backend:a3f8c21
+```
+
+Create artifact repo using gcloud:
+```
+gcloud artifacts repositories create chandio-artifact-repo \
+    --repository-format docker \
+    --location us-central1 \
+    --description  "Artifact Repo for Docker" \
+    --immutable-tags \
+    --async
+
+gcloud artifacts repositories describe REPOSITORY \
+    --location=LOCATION    
 ```
 
 ---
@@ -691,7 +695,7 @@ spec:
 
 ## ⚙️ GitHub Actions Workflows
 
-### Dev Workflow (`.github/workflows/cicd-deploy.yaml`)
+### Workflow (`.github/workflows/cicd-deploy.yaml`)
 
 ```yaml
 name: cicd-gcp-gitops
@@ -773,6 +777,19 @@ jobs:
           git add .
           git commit -m "CI: Update image tag to ${{ steps.vars.outputs.IMAGE_TAG }}"
           git push origin ${{ env.CONFIG_REPO_BRANCH }}
+```
+
+Github secrets for cicd pipeline:
+
+```bash
+
+WORKLOAD_IDENTITY_PROVIDER   projects/123456789/locations/global/workloadIdentityPools/github-actions-cicd-gcp-pool/providers/my-github-actions-cicd-gcp-oidc
+
+SERVICE_ACCOUNT   cicd-oidc-gcp-sa@dev-project-123456.iam.gserviceaccount.com
+
+GITOPS_PAT Personal access tokens (which have repo full control)
+
+Note: Above secrets apply on gcp-oidc-gitops-code-repo repo
 ```
 
 ---
